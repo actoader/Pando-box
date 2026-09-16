@@ -13,6 +13,8 @@
 #                  next one's words and map)
 #   BOX_IDLE_STOP  minutes idle before the box stops its pod (20)
 #   BOX_MODEL      the reader (Qwen/Qwen2.5-VL-7B-Instruct)
+#   BOX_READER_SEQS, BOX_READER_JOBS, BOX_MAP_BATCH
+#                  the card's knobs, detected below; set to override
 set -u
 MODEL=${BOX_MODEL:-Qwen/Qwen2.5-VL-7B-Instruct}
 export HF_HOME=${HF_HOME:-/root/.cache/huggingface}   # the container disk
@@ -36,9 +38,30 @@ df -h / | tail -1
 # 0.36 GiB of working memory, under one page); 6 pages in flight; the
 # built-in sampler (nothing compiled at start). The map maker takes
 # the rest of the card in batches of 8 (box_server's BOX_MAP_BATCH).
+# THE CARD SETS THE KNOBS (2026-09-16, A: "for a rental there should be
+# detection and optimization based on what it has access to"). The
+# reader's weights are 15.7 GB whatever the card; everything above
+# that is room for pages in flight, and a 7B model's throughput grows
+# with how many it holds at once (decoding is memory-bound: more
+# pages per pass, same pass). So the pages in flight (vLLM's
+# max-num-seqs, and box_server's BOX_READER_JOBS to match) and the map
+# maker's batch (BOX_MAP_BATCH) follow the card's memory: a 24 GB
+# card 6 / 8 (the nights before), 32 to 48 GB 16 / 16, 80 GB and up
+# 32 / 32 (a step, not the ceiling: measured first, raised after).
+# Any of the three set on the pod's env wins over the detection.
+VRAM_MB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ')
+VRAM_MB=${VRAM_MB:-24000}
+if [ "$VRAM_MB" -ge 70000 ]; then TIER="80 GB and up"; SEQS=32; MAPB=32
+elif [ "$VRAM_MB" -ge 30000 ]; then TIER="32 to 48 GB"; SEQS=16; MAPB=16
+else TIER="24 GB"; SEQS=6; MAPB=8; fi
+export BOX_READER_SEQS=${BOX_READER_SEQS:-$SEQS}
+export BOX_READER_JOBS=${BOX_READER_JOBS:-$BOX_READER_SEQS}
+export BOX_MAP_BATCH=${BOX_MAP_BATCH:-$MAPB}
+echo "card: $VRAM_MB MiB ($TIER): $BOX_READER_SEQS pages in flight at the reader, box_server asks $BOX_READER_JOBS at once, the map maker's batch $BOX_MAP_BATCH"
 echo "starting the reader ($MODEL; 15 GB fetched to the container disk, then a minute to load; the log is $BOX_READER_LOG)"
 vllm serve "$MODEL" --host 127.0.0.1 --port 8001 --dtype half \
-  --max-model-len 16384 --gpu-memory-utilization 0.88 --max-num-seqs 6 \
+  --max-model-len 16384 --gpu-memory-utilization 0.88 \
+  --max-num-seqs "$BOX_READER_SEQS" \
   --limit-mm-per-prompt '{"image": 1}' --served-model-name "$MODEL" \
   > "$BOX_READER_LOG" 2>&1 &
 exec python3 /box/loader.py --port 8000
