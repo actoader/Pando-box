@@ -127,7 +127,8 @@ def stop_pod():
                 data=json.dumps({"action": "stop"}).encode(),
                 method="POST", headers={
                     "Authorization": "Bearer " + key,
-                    "Content-Type": "application/json"})
+                    "Content-Type": "application/json",
+                    "User-Agent": "pando-box/1"})
             with urllib.request.urlopen(req, timeout=60) as r:
                 return True, "api v2 stop -> %d" % r.status
         except Exception as e:
