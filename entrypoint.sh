@@ -73,4 +73,13 @@ vllm serve "$MODEL" --host 127.0.0.1 --port 8001 --dtype half \
   --max-num-seqs "$BOX_READER_SEQS" \
   --limit-mm-per-prompt '{"image": 1}' --served-model-name "$MODEL" \
   > "$BOX_READER_LOG" 2>&1 &
+# the loader off the volume when the Mac has put one there (pod.py
+# put_code: box/code/loader.py beside the code), the image's own as
+# the fallback and when the volume's cannot even start: a loader
+# change is a --code, never an image build (thread V, sitting 2)
+if [ -n "${BOX_ROOT:-}" ] && [ -s "$BOX_ROOT/code/loader.py" ]; then
+  echo "loader: the volume's ($BOX_ROOT/code/loader.py)"
+  python3 "$BOX_ROOT/code/loader.py" --port 8000 && exit 0
+  echo "the volume's loader ended; falling back to the image's"
+fi
 exec python3 /box/loader.py --port 8000
