@@ -1,8 +1,11 @@
 #!/bin/bash
-# The box boots (thread H sitting 2, 2026-09-16): the reader on the
-# card in the background, the loader on 8000 in front, until the Mac
-# sends core/ and the loader becomes box_server. Every knob is an env
-# on the pod, set once on its template, never pasted:
+# The box boots (thread H sitting 2, 2026-09-16; v3, thread V,
+# 2026-09-19): the reader on the card in the background, the loader on
+# 8000 in front, writing a heartbeat onto the volume from its first
+# second and taking core/ off the volume (BOX_ROOT/code/CURRENT) the
+# moment it is there, then becoming box_server. The Mac is never
+# required to be present. Every knob is an env on the pod, set by
+# pod.py --deploy, never pasted:
 #   LAYOUT_KEY     the bearer key the Mac reads off the pod's env (the
 #                  loader refuses code without one)
 #   BOX_QUEUE_GB   the queue's budget on the volume (a RunPod volume
@@ -11,7 +14,11 @@
 #                  holds nothing but the queue now
 #   BOX_JOBS       tickets at once (3: one book's reading overlaps the
 #                  next one's words and map)
-#   BOX_IDLE_STOP  minutes idle before the box stops its pod (20)
+#   BOX_IDLE_STOP  minutes with nothing to do before the box stops its
+#                  pod (20): the loader's "no code on the volume and an
+#                  empty queue", box_server's "nothing running, queued
+#                  or asked"
+#   BOX_MAX_HOURS  the ceiling since boot (36): the card's budget
 #   BOX_MODEL      the reader (Qwen/Qwen2.5-VL-7B-Instruct)
 #   BOX_READER_SEQS, BOX_READER_JOBS, BOX_MAP_BATCH
 #                  the card's knobs, detected below; set to override
@@ -28,7 +35,9 @@ if [ -d /workspace ] && [ -w /workspace ]; then
     if [ -e "/workspace/$f" ]; then echo "sweeping /workspace/$f (the hand-built box's; the image carries it now)"; rm -rf "/workspace/$f"; fi
   done
 fi
-echo "box image $(cat /box/VERSION 2>/dev/null || echo dev) | pod ${RUNPOD_POD_ID:-none} | key ${LAYOUT_KEY:+set}${LAYOUT_KEY:-UNSET (set LAYOUT_KEY on the pod)} | queue root ${BOX_ROOT:-the container disk} | budget ${BOX_QUEUE_GB:-unset} GB | jobs ${BOX_JOBS:-2}"
+echo "box image $(cat /box/VERSION 2>/dev/null || echo dev) | pod ${RUNPOD_POD_ID:-none} | key ${LAYOUT_KEY:+set}${LAYOUT_KEY:-UNSET (set LAYOUT_KEY on the pod)} | queue root ${BOX_ROOT:-the container disk} | budget ${BOX_QUEUE_GB:-unset} GB | jobs ${BOX_JOBS:-2} | idle stop ${BOX_IDLE_STOP:-20} min | ceiling ${BOX_MAX_HOURS:-36} h"
+# the heartbeat starts with the loader, seconds from here; the code
+# comes off the volume (pod.py --deploy and --code put it there)
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null || echo "no card visible"
 df -h / | tail -1
 # the reader: localhost only (the box reads its own pages; nothing on
