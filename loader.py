@@ -62,6 +62,7 @@ Run by the image's entrypoint: python3 /box/loader.py --port 8000
 """
 import argparse
 import hashlib
+import hmac
 import io
 import json
 import os
@@ -79,7 +80,7 @@ READER = os.environ.get("BOX_READER_URL") or \
     "http://127.0.0.1:8001/v1/chat/completions"
 IDLE_STOP = int(os.environ.get("BOX_IDLE_STOP") or 20)   # minutes, 0 never
 MAX_HOURS = float(os.environ.get("BOX_MAX_HOURS") or 36)  # 0 never
-LOOK = float(os.environ.get("BOX_LOOK_S") or 15)          # the beat here
+LOOK = float(os.environ.get("BOX_LOOK_S") or 15)          # the heartbeat here
 STARTED = time.time()
 _EXEC = []                    # the sha taken, once; the one lock's flag
 _LOCK = threading.Lock()
@@ -228,7 +229,7 @@ def heartbeat_path(where=None):
 def write_heartbeat(where=None):
     """This loader's state onto the volume, whole (a .part then a
     rename), at the file box_server will take over."""
-    hb = {"box": box_name(), "t": time.time(), "beat_s": LOOK,
+    hb = {"box": box_name(), "t": time.time(), "heartbeat_s": LOOK,
           "loader": True, "phase": PHASE[0], "image": image_version(),
           "reader": reader_model(), "code": None, "key": bool(H.key),
           "started": STARTED, "up_seconds": int(time.time() - STARTED),
@@ -243,7 +244,7 @@ def write_heartbeat(where=None):
     return hb
 
 
-def beat(once=False):
+def heartbeat(once=False):
     """Every LOOK seconds: the phase, the heartbeat, a look at CURRENT
     (the code taken when it is there), the guard."""
     while True:
@@ -268,7 +269,7 @@ def beat(once=False):
                         say("stop: %s (%s)" % ("done" if ok else "FAILED",
                                                note))
                         time.sleep(600)
-        except Exception as e:  # noqa: BLE001 - the beat never dies
+        except Exception as e:  # noqa: BLE001 - the heartbeat never dies
             say("beat failed: %s" % str(e)[:160])
         if once:
             return
@@ -382,7 +383,7 @@ class H(BaseHTTPRequestHandler):
     def _authed(self):
         if not self.key:
             return True                 # /health says so; /code refuses
-        return self.headers.get("Authorization") == "Bearer " + self.key
+        return hmac.compare_digest(self.headers.get("Authorization") or "", "Bearer " + self.key)
 
     def do_GET(self):
         if not self._authed():
@@ -444,7 +445,7 @@ def main(argv=None):
         write_heartbeat()                  # "booting", the first second
     except OSError as e:
         say("heartbeat not written: %s" % str(e)[:120])
-    threading.Thread(target=beat, daemon=True).start()
+    threading.Thread(target=heartbeat, daemon=True).start()
     ThreadingHTTPServer((a.host, a.port), H).serve_forever()
 
 

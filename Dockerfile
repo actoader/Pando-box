@@ -14,9 +14,10 @@
 # workflow) and published as ghcr.io/<owner>/pando-box:<tag>.
 #
 # FROM: vLLM's own image, pinned (a floating tag changes under us):
-# CUDA, torch, transformers, vllm 0.29.0, Pillow, huggingface_hub, the
+# CUDA, torch, transformers, vllm 0.34.0 (v6, 2026-11-17: GLM-OCR's own
+# speed-up, mtp, loads from 0.34.0 and not in 0.29.0), Pillow, huggingface_hub, the
 # vllm CLI and python3 on PATH. Ubuntu underneath, so apt.
-FROM vllm/vllm-openai:v0.29.0
+FROM vllm/vllm-openai:v0.34.0
 
 ARG VERSION=dev
 ENV DEBIAN_FRONTEND=noninteractive \
